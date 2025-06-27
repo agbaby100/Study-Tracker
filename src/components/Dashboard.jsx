@@ -8,31 +8,38 @@ export default function Dashboard() {
   const [subjects, setSubjects] = useState([])
   const [newSubject, setNewSubject] = useState("")
   const [loading, setLoading] = useState(true)
-  const [loadingAuth, setLoadingAuth] = useState(true)
   const [error, setError] = useState("")
   const [user, setUser] = useState(null)
 
+  // Listen for auth state changes
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      console.log("Auth state changed:", currentUser?.email || "No user")
       setUser(currentUser)
-      setLoadingAuth(false)
+      if (!currentUser) {
+        setLoading(false)
+      }
     })
+    
     return () => unsubAuth()
   }, [])
 
+  // Listen for Firestore data when user is authenticated
   useEffect(() => {
-    if (loadingAuth) return
-
     if (!user) {
+      console.log("No user, clearing subjects")
       setSubjects([])
       setLoading(false)
       return
     }
 
+    console.log("Setting up Firestore listener for user:", user.email)
+    
     const unsub = onSnapshot(
       collection(db, "users", user.uid, "subjects"),
       (snap) => {
         const data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        console.log("Firestore data received:", data.length, "subjects")
         setSubjects(data)
         setLoading(false)
       },
@@ -43,11 +50,11 @@ export default function Dashboard() {
       }
     )
     return () => unsub()
-  }, [user, loadingAuth])
+  }, [user])
 
   const addSubject = async () => {
     if (!newSubject.trim() || !user) return
-
+    
     try {
       await addDoc(collection(db, "users", user.uid, "subjects"), {
         name: newSubject.trim(),
@@ -81,7 +88,7 @@ export default function Dashboard() {
 
   const toggleTopic = async (subjectId, tIndex) => {
     if (!user) return
-
+    
     try {
       const subRef = doc(db, "users", user.uid, "subjects", subjectId)
       const subject = subjects.find((s) => s.id === subjectId)
@@ -96,7 +103,7 @@ export default function Dashboard() {
 
   const deleteTopic = async (subjectId, tIndex) => {
     if (!user) return
-
+    
     try {
       const subRef = doc(db, "users", user.uid, "subjects", subjectId)
       const subject = subjects.find((s) => s.id === subjectId)
@@ -111,7 +118,7 @@ export default function Dashboard() {
 
   const deleteSubject = async (subjectId) => {
     if (!user) return
-
+    
     if (!window.confirm("Are you sure you want to delete this subject and all its topics?")) {
       return
     }
@@ -163,6 +170,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto">
+        {/* Header */}
         <div className="bg-white shadow-lg rounded-xl p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
@@ -181,36 +189,49 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Error Message */}
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
             <div className="flex justify-between items-center">
               <span>{error}</span>
-              <button onClick={() => setError("")} className="text-red-500 hover:text-red-700">✕</button>
+              <button
+                onClick={() => setError("")}
+                className="text-red-500 hover:text-red-700"
+              >
+                ✕
+              </button>
             </div>
           </div>
         )}
 
-        <div className="bg-white shadow-lg rounded-xl p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Add New Subject</h2>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              placeholder="Enter subject name (e.g., Mathematics, Physics)"
-              value={newSubject}
-              onChange={(e) => setNewSubject(e.target.value)}
-              onKeyPress={(e) => handleKeyPress(e, addSubject)}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-            <button
-              onClick={addSubject}
-              disabled={!newSubject.trim()}
-              className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg transition-colors duration-200 font-medium"
-            >
-              Add Subject
-            </button>
-          </div>
-        </div>
+       {/* Add Subject Section */}
+<div className="bg-white shadow-lg rounded-xl p-6 mb-6 border border-gray-100">
+  <div className="flex items-center gap-3 mb-4">
+    <span className="text-2xl">📚</span>
+    <h2 className="text-xl font-semibold text-gray-800">Add New Subject</h2>
+  </div>
+  
+  <div className="flex flex-col sm:flex-row gap-3">
+    <input
+      type="text"
+      placeholder="Enter subject name (e.g., Mathematics, Physics)"
+      value={newSubject}
+      onChange={(e) => setNewSubject(e.target.value)}
+      onKeyPress={(e) => handleKeyPress(e, addSubject)}
+      className="flex-1 border-2 border-gray-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors duration-200"
+    />
+    <button
+      onClick={addSubject}
+      disabled={!newSubject.trim()}
+      className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg transition-colors duration-200 font-medium flex items-center gap-2 justify-center"
+    >
+      <span>➕</span>
+      Add Subject
+    </button>
+  </div>
+</div>
 
+        {/* Subjects List */}
         {subjects.length === 0 ? (
           <div className="bg-white shadow-lg rounded-xl p-8 text-center">
             <div className="text-6xl mb-4">📖</div>
@@ -272,6 +293,7 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
         </button>
       </div>
 
+      {/* Topics List */}
       {subject.topics.length > 0 && (
         <div className="mb-4">
           <h4 className="font-medium text-gray-700 mb-3">Topics:</h4>
@@ -280,8 +302,8 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
               <div
                 key={i}
                 className={`flex justify-between items-center p-3 rounded-lg border transition-colors duration-200 ${
-                  topic.done 
-                    ? 'bg-green-50 border-green-200' 
+                  topic.done
+                    ? 'bg-green-50 border-green-200'
                     : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                 }`}
               >
@@ -293,8 +315,8 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
                     className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
                   />
                   <span className={`${
-                    topic.done 
-                      ? "line-through text-gray-500" 
+                    topic.done
+                      ? "line-through text-gray-500"
                       : "text-gray-800"
                   } transition-colors duration-200`}>
                     {topic.name}
@@ -314,6 +336,7 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
         </div>
       )}
 
+      {/* Add Topic Input */}
       <AddTopicInput onAdd={(topic) => onAddTopic(subject.id, topic)} />
     </div>
   )
