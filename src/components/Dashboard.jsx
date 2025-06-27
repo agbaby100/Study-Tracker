@@ -2,17 +2,32 @@
 import { useState, useEffect } from "react"
 import { auth, db } from "./firebase"
 import { collection, addDoc, doc, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore"
-import { signOut } from "firebase/auth"
+import { signOut, onAuthStateChanged } from "firebase/auth"
 
 export default function Dashboard() {
   const [subjects, setSubjects] = useState([])
   const [newSubject, setNewSubject] = useState("")
   const [loading, setLoading] = useState(true)
+  const [loadingAuth, setLoadingAuth] = useState(true)
   const [error, setError] = useState("")
-  const user = auth.currentUser
+  const [user, setUser] = useState(null)
 
   useEffect(() => {
-    if (!user) return
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      setLoadingAuth(false)
+    })
+    return () => unsubAuth()
+  }, [])
+
+  useEffect(() => {
+    if (loadingAuth) return
+
+    if (!user) {
+      setSubjects([])
+      setLoading(false)
+      return
+    }
 
     const unsub = onSnapshot(
       collection(db, "users", user.uid, "subjects"),
@@ -28,11 +43,11 @@ export default function Dashboard() {
       }
     )
     return () => unsub()
-  }, [user])
+  }, [user, loadingAuth])
 
   const addSubject = async () => {
-    if (!newSubject.trim()) return
-    
+    if (!newSubject.trim() || !user) return
+
     try {
       await addDoc(collection(db, "users", user.uid, "subjects"), {
         name: newSubject.trim(),
@@ -47,15 +62,15 @@ export default function Dashboard() {
   }
 
   const addTopic = async (subjectId, topic) => {
-    if (!topic.trim()) return
+    if (!topic.trim() || !user) return
 
     try {
       const subRef = doc(db, "users", user.uid, "subjects", subjectId)
       const subject = subjects.find((s) => s.id === subjectId)
-      const updatedTopics = [...subject.topics, { 
-        name: topic.trim(), 
-        done: false, 
-        createdAt: new Date() 
+      const updatedTopics = [...subject.topics, {
+        name: topic.trim(),
+        done: false,
+        createdAt: new Date()
       }]
       await updateDoc(subRef, { topics: updatedTopics })
     } catch (error) {
@@ -65,6 +80,8 @@ export default function Dashboard() {
   }
 
   const toggleTopic = async (subjectId, tIndex) => {
+    if (!user) return
+
     try {
       const subRef = doc(db, "users", user.uid, "subjects", subjectId)
       const subject = subjects.find((s) => s.id === subjectId)
@@ -78,6 +95,8 @@ export default function Dashboard() {
   }
 
   const deleteTopic = async (subjectId, tIndex) => {
+    if (!user) return
+
     try {
       const subRef = doc(db, "users", user.uid, "subjects", subjectId)
       const subject = subjects.find((s) => s.id === subjectId)
@@ -91,6 +110,8 @@ export default function Dashboard() {
   }
 
   const deleteSubject = async (subjectId) => {
+    if (!user) return
+
     if (!window.confirm("Are you sure you want to delete this subject and all its topics?")) {
       return
     }
@@ -129,10 +150,19 @@ export default function Dashboard() {
     )
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Please log in to access your study tracker.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="bg-white shadow-lg rounded-xl p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
@@ -151,22 +181,15 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
             <div className="flex justify-between items-center">
               <span>{error}</span>
-              <button 
-                onClick={() => setError("")}
-                className="text-red-500 hover:text-red-700"
-              >
-                ✕
-              </button>
+              <button onClick={() => setError("")} className="text-red-500 hover:text-red-700">✕</button>
             </div>
           </div>
         )}
 
-        {/* Add Subject Section */}
         <div className="bg-white shadow-lg rounded-xl p-6 mb-6">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Add New Subject</h2>
           <div className="flex gap-3">
@@ -188,7 +211,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Subjects List */}
         {subjects.length === 0 ? (
           <div className="bg-white shadow-lg rounded-xl p-8 text-center">
             <div className="text-6xl mb-4">📖</div>
@@ -250,7 +272,6 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
         </button>
       </div>
 
-      {/* Topics List */}
       {subject.topics.length > 0 && (
         <div className="mb-4">
           <h4 className="font-medium text-gray-700 mb-3">Topics:</h4>
@@ -293,7 +314,6 @@ function SubjectCard({ subject, onAddTopic, onToggleTopic, onDeleteTopic, onDele
         </div>
       )}
 
-      {/* Add Topic Input */}
       <AddTopicInput onAdd={(topic) => onAddTopic(subject.id, topic)} />
     </div>
   )
